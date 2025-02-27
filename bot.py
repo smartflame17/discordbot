@@ -1,9 +1,8 @@
 import asyncio
 import discord
 from discord.ext import commands
-
-from bot_token import token, allowed_channel_ids
 from music import Music
+from bot_token import token, allowed_channel_ids
 
 import random
 
@@ -19,7 +18,7 @@ bot = commands.Bot(command_prefix= '!', description=description, intents=intents
 #runs on startup
 @bot.event
 async def on_ready():
-    print("Login...")
+    print("Logging In...")
     print(f'Logged in to {bot.user}')
     print(f'ID: {bot.user.name}')
     await bot.change_presence(status=discord.Status.online, activity=discord.Game('도우-다'))
@@ -64,5 +63,6 @@ async def main():
      async with bot:
           await bot.add_cog(Music(bot))
           await bot.start(token)
+          print("Music class loaded and started")
 
 asyncio.run(main())
