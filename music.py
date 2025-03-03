@@ -35,7 +35,7 @@ class Music(commands.Cog):
         self.queue = [] # holds tuples of ({music_url}, {music_title})
         self.current_song = None  # Currently playing song
         self.max_queue_size = 10
-        self.volume = 0.5    # default volume
+        self.volume = 0.3    # default volume
 
     # join user voice room if there is one with user in it
     @commands.command()
@@ -64,6 +64,7 @@ class Music(commands.Cog):
                 if not ctx.voice_client.is_playing():   #if not playing any song, play immediately
                     self.current_song = song
                     ctx.voice_client.play(song, after=lambda _: asyncio.run_coroutine_threadsafe(self.play_next(ctx), self.bot.loop))   #run play_next after song ends
+                    ctx.voice_client.source.volume = self.volume
                     await ctx.send(f"Now Playing: {self.current_song.title}")
                 else:   # else append to queue
                     self.queue.append((url, song.title))
@@ -89,6 +90,7 @@ class Music(commands.Cog):
                 next_url, next_title = self.queue.pop(0)
                 self.current_song = await YTDLSource.from_url(next_url, loop=self.bot.loop, stream=True)
                 ctx.voice_client.play(self.current_song, after=lambda _: asyncio.run_coroutine_threadsafe(self.play_next(ctx), self.bot.loop))
+                ctx.voice_client.source.volume = self.volume
                 await ctx.send(f"Now Playing: {self.current_song.title}")
                 print(f"Now Playing: {self.current_song.title}")
         except Exception as e:
@@ -206,5 +208,5 @@ class YTDLSource(discord.PCMVolumeTransformer):
             data = data['entries'][0]
  
         filename = data['url'] if stream else ytdl.prepare_filename(data)
-        #print(f"File Obtained : {filename}")
+        # print(f"File Obtained : {filename}")
         return cls(discord.FFmpegPCMAudio(filename, **ffmpeg_options), data=data)
