@@ -25,7 +25,7 @@ ytdl_format_options = {
 ytdl = youtube_dl.YoutubeDL(ytdl_format_options)
 
 ffmpeg_options = {
-    #'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
+    'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
     'options': '-vn',
 }
 
@@ -181,13 +181,41 @@ class Music(commands.Cog):
     @commands.command(aliases=["q"])
     async def queue(self, ctx):
         if len(self.queue) == 0:
-            await ctx.send("Queue is empty")
-            return
-        queue_info = f"Currently {len(self.queue)} songs on queue:\n"
+            return await ctx.send("Queue is empty")
+
+        # 1. Create the Embed object
+        embed = discord.Embed(
+            title="🎶 Music Queue",
+            description=f"Currently {len(self.queue)} songs queued",
+            color=discord.Color.blue() # You can use hex codes too: 0x00ff00
+        )
+
+        # 2. Add the Currently Playing song (if any) as a field
+        if self.current_song:
+            embed.add_field(
+                name="▶️ Now Playing",
+                value=self.current_song.title,
+                inline=False
+            )
+
+        # 3. Build the string for the rest of the queue
+        queue_list = ""
         for i, (_, title) in enumerate(self.queue, 1):
-            queue_info += f"{i}. {title}\n"
-        await ctx.send(queue_info)
-        # prints out queue info
+            # Truncate title if it's too long to prevent broken layout
+            if len(title) > 60:
+                title = title[:57] + "..."
+            queue_list += f"`{i}.` {title}\n"
+
+        # 4. Add the list to the embed description or a specific field
+        # Note: If queue_list is empty, we add a placeholder
+        embed.add_field(
+            name="Up Next",
+            value=queue_list if queue_list else "No other songs in queue",
+            inline=False
+        )
+
+        # 5. Send the embed
+        await ctx.send(embed=embed)
 
 #wrapper class for discord's FFmpegPCMAudio that saves title, url and data as well
 class YTDLSource(discord.PCMVolumeTransformer):
