@@ -3,6 +3,7 @@ import discord
 from discord.ext import commands
 import yt_dlp as youtube_dl
 from bot_token import allowed_channel_ids
+import os
 
 # Suppress noise about console usage from errors
 youtube_dl.utils.bug_reports_message = lambda: ''
@@ -25,7 +26,7 @@ ytdl_format_options = {
 ytdl = youtube_dl.YoutubeDL(ytdl_format_options)
 
 ffmpeg_options = {
-    'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
+    #'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
     'options': '-vn',
 }
 
@@ -59,7 +60,7 @@ class Music(commands.Cog):
         
             # fetch song info first and display queue info
             async with ctx.typing():
-                song = await YTDLSource.from_url(url, loop=self.bot.loop, stream=True)
+                song = await YTDLSource.from_url(url, loop=self.bot.loop, stream=False)
 
                 if not ctx.voice_client.is_playing():   #if not playing any song, play immediately
                     self.current_song = song
@@ -88,11 +89,30 @@ class Music(commands.Cog):
             if len(self.queue) > 0:
                 # if song ends, play next song in queue (if there is any)
                 next_url, next_title = self.queue.pop(0)
-                self.current_song = await YTDLSource.from_url(next_url, loop=self.bot.loop, stream=True)
-                ctx.voice_client.play(self.current_song, after=lambda _: asyncio.run_coroutine_threadsafe(self.play_next(ctx), self.bot.loop))
+                self.current_song = await YTDLSource.from_url(next_url, loop=self.bot.loop, stream=False)
+
+                # We need to save this in a local variable so the callback knows which file to delete
+                song_filename = self.current_song.data['url'] if 'url' in self.current_song.data else ytdl.prepare_filename(self.current_song.data)
+
+                def after_playing(error):
+                    if error:
+                        print(f"Player error: {error}")
+                    try:
+                        # Attempt to delete the file
+                        if os.path.exists(song_filename):
+                            os.remove(song_filename)
+                            print(f"Deleted file: {song_filename}")
+                    except Exception as e:
+                        print(f"Error deleting file: {e}")
+                    
+                    # Trigger the next song
+                    asyncio.run_coroutine_threadsafe(self.play_next(ctx), self.bot.loop)
+
+                ctx.voice_client.play(self.current_song, after=after_playing)
                 ctx.voice_client.source.volume = self.volume
                 await ctx.send(f"Now Playing: {self.current_song.title}")
                 print(f"Now Playing: {self.current_song.title}")
+
         except Exception as e:
             await ctx.send(f"Error while adding music to queue : {str(e)}")
             print(f"Play Error : {e}")
@@ -116,6 +136,7 @@ class Music(commands.Cog):
             ctx.voice_client.stop()
         
         try:
+            #TODO: Fix bug where if error occurs during play_next, song is lost from queue
             current_url, current_title = self.queue.pop(0)  #pop from queue to get next song
 
             self.current_song = await YTDLSource.from_url(current_url, loop= self.bot.loop, stream=True)
