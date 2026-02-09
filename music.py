@@ -64,7 +64,18 @@ class Music(commands.Cog):
 
                 if not ctx.voice_client.is_playing():   #if not playing any song, play immediately
                     self.current_song = song
-                    ctx.voice_client.play(song, after=lambda _: asyncio.run_coroutine_threadsafe(self.play_next(ctx), self.bot.loop))   #run play_next after song ends
+                    def after_playing(error):
+                        if error:
+                            print(f"Player error: {error}")
+                        try:
+                            if self.current_song and self.current_song.filename and os.path.exists(self.current_song.filename):
+                                os.remove(self.current_song.filename)
+                                print(f"Deleted file: {self.current_song.filename}")
+                        except Exception as e:
+                            print(f"Error deleting file: {e}")
+                        asyncio.run_coroutine_threadsafe(self.play_next(ctx), self.bot.loop)
+
+                    ctx.voice_client.play(song, after=after_playing)   #run play_next after song ends
                     ctx.voice_client.source.volume = self.volume
                     await ctx.send(f"Now Playing: {self.current_song.title}")
                 else:   # else append to queue
@@ -88,20 +99,18 @@ class Music(commands.Cog):
         try:
             if len(self.queue) > 0:
                 # if song ends, play next song in queue (if there is any)
-                next_url, next_title = self.queue.pop(0)
+                next_url, next_title = self.queue[0]
                 self.current_song = await YTDLSource.from_url(next_url, loop=self.bot.loop, stream=False)
-
-                # We need to save this in a local variable so the callback knows which file to delete
-                song_filename = self.current_song.data['url'] if 'url' in self.current_song.data else ytdl.prepare_filename(self.current_song.data)
+                self.queue.pop(0)
 
                 def after_playing(error):
                     if error:
                         print(f"Player error: {error}")
                     try:
                         # Attempt to delete the file
-                        if os.path.exists(song_filename):
-                            os.remove(song_filename)
-                            print(f"Deleted file: {song_filename}")
+                        if self.current_song and self.current_song.filename and os.path.exists(self.current_song.filename):
+                            os.remove(self.current_song.filename)
+                            print(f"Deleted file: {self.current_song.filename}")
                     except Exception as e:
                         print(f"Error deleting file: {e}")
                     
@@ -135,19 +144,7 @@ class Music(commands.Cog):
         if ctx.voice_client.is_playing():
             ctx.voice_client.stop()
         
-        try:
-            #TODO: Fix bug where if error occurs during play_next, song is lost from queue
-            current_url, current_title = self.queue.pop(0)  #pop from queue to get next song
-
-            self.current_song = await YTDLSource.from_url(current_url, loop= self.bot.loop, stream=True)
-            ctx.voice_client.play(self.current_song, after=lambda _: asyncio.run_coroutine_threadsafe(self.play_next(ctx), self.bot.loop))
-            await ctx.send(f"Now Playing : {self.current_song.title}")
-            print(f"Now Playing: {self.current_song.title}")
-        
-        except Exception as e:
-            await ctx.send("Error while playing song")
-            if current_url and current_title:
-                self.queue.insert(0, (current_url, current_title))
+        await self.play_next(ctx)
 
     @commands.command(aliases=["v"])
     async def volume(self, ctx, volume:int):
@@ -240,12 +237,13 @@ class Music(commands.Cog):
 
 #wrapper class for discord's FFmpegPCMAudio that saves title, url and data as well
 class YTDLSource(discord.PCMVolumeTransformer):
-    def __init__(self, original, *, data, volume = 0.5):
+    def __init__(self, original, *, data, filename = None, volume = 0.5):
         super().__init__(original, volume)
 
         self.data = data
         self.title = data.get('title')
         self.url = data.get('url')
+        self.filename = filename
     
     @classmethod
     async def from_url(cls, url, *, loop = None, stream = False):
@@ -258,4 +256,4 @@ class YTDLSource(discord.PCMVolumeTransformer):
  
         filename = data['url'] if stream else ytdl.prepare_filename(data)
         # print(f"File Obtained : {filename}")
-        return cls(discord.FFmpegPCMAudio(filename, **ffmpeg_options), data=data)
+        return cls(discord.FFmpegPCMAudio(filename, **ffmpeg_options), data=data, filename=None if stream else filename)
